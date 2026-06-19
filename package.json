@@ -1,0 +1,257 @@
+import React, { createContext, useState, useEffect } from 'react';
+
+export const AppContext = createContext();
+
+export const AppProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [cart, setCart] = useState([]);
+  const [wishlist, setWishlist] = useState([]);
+  const [toasts, setToasts] = useState([]);
+  const [darkMode, setDarkMode] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    const savedCart = localStorage.getItem('cart');
+    const savedWishlist = localStorage.getItem('wishlist');
+    const savedDarkMode = localStorage.getItem('darkMode');
+
+    if (savedUser) setUser(JSON.parse(savedUser));
+    if (savedCart) setCart(JSON.parse(savedCart));
+    if (savedWishlist) setWishlist(JSON.parse(savedWishlist));
+    if (savedDarkMode) {
+      const isDark = JSON.parse(savedDarkMode);
+      setDarkMode(isDark);
+      if (isDark) document.body.classList.add('dark-mode');
+    }
+  }, []);
+
+  // Persist user to localStorage
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('user');
+    }
+  }, [user]);
+
+  // Persist cart to localStorage
+  useEffect(() => {
+    localStorage.setItem('cart', JSON.stringify(cart));
+  }, [cart]);
+
+  // Persist wishlist to localStorage
+  useEffect(() => {
+    localStorage.setItem('wishlist', JSON.stringify(wishlist));
+  }, [wishlist]);
+
+  // Persist dark mode
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+    if (darkMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+  }, [darkMode]);
+
+  // Authentication
+  const login = (email, password) => {
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const foundUser = users.find(u => u.email === email && u.password === password);
+    
+    if (foundUser) {
+      const userData = {
+        id: foundUser.id,
+        name: foundUser.name,
+        email: foundUser.email,
+        phone: foundUser.phone,
+        address: foundUser.address,
+        paymentMethod: foundUser.paymentMethod
+      };
+      setUser(userData);
+      localStorage.setItem('isLoggedIn', 'true');
+      addToast('Login successful!', 'success');
+      return true;
+    }
+    addToast('Invalid email or password', 'error');
+    return false;
+  };
+
+  const signup = (userData) => {
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    
+    if (users.find(u => u.email === userData.email)) {
+      addToast('Email already exists', 'error');
+      return false;
+    }
+
+    const newUser = {
+      id: Date.now(),
+      ...userData
+    };
+
+    users.push(newUser);
+    localStorage.setItem('users', JSON.stringify(users));
+    addToast('Signup successful! Please login.', 'success');
+    return true;
+  };
+
+  const updateUserProfile = (updatedData) => {
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const userIndex = users.findIndex(u => u.id === user.id);
+    
+    if (userIndex !== -1) {
+      users[userIndex] = { ...users[userIndex], ...updatedData };
+      localStorage.setItem('users', JSON.stringify(users));
+      setUser({ ...user, ...updatedData });
+      addToast('Profile updated successfully!', 'success');
+      return true;
+    }
+    return false;
+  };
+
+  const deleteAccount = () => {
+    const users = JSON.parse(localStorage.getItem('users') || '[]');
+    const filteredUsers = users.filter(u => u.id !== user.id);
+    localStorage.setItem('users', JSON.stringify(filteredUsers));
+    logout();
+    addToast('Account deleted successfully', 'success');
+  };
+
+  const logout = () => {
+    setUser(null);
+    setCart([]);
+    setWishlist([]);
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('user');
+    localStorage.removeItem('cart');
+    localStorage.removeItem('wishlist');
+    addToast('Logged out successfully', 'success');
+  };
+
+  // Cart functions
+  const addToCart = (product) => {
+    setCart(prevCart => {
+      const existingItem = prevCart.find(item => item.id === product.id);
+      if (existingItem) {
+        return prevCart.map(item =>
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      }
+      return [...prevCart, { ...product, quantity: 1 }];
+    });
+    addToast(`${product.name} added to cart`, 'success');
+  };
+
+  const removeFromCart = (productId) => {
+    setCart(prevCart => prevCart.filter(item => item.id !== productId));
+    addToast('Product removed from cart', 'success');
+  };
+
+  const updateCartQuantity = (productId, quantity) => {
+    if (quantity <= 0) {
+      removeFromCart(productId);
+    } else {
+      setCart(prevCart =>
+        prevCart.map(item =>
+          item.id === productId ? { ...item, quantity } : item
+        )
+      );
+    }
+  };
+
+  const clearCart = () => {
+    setCart([]);
+  };
+
+  // Wishlist functions
+  const addToWishlist = (product) => {
+    setWishlist(prevWishlist => {
+      const exists = prevWishlist.find(item => item.id === product.id);
+      if (exists) {
+        addToast('Already in wishlist', 'info');
+        return prevWishlist;
+      }
+      addToast(`${product.name} added to wishlist`, 'success');
+      return [...prevWishlist, product];
+    });
+  };
+
+  const removeFromWishlist = (productId) => {
+    setWishlist(prevWishlist => prevWishlist.filter(item => item.id !== productId));
+    addToast('Product removed from wishlist', 'success');
+  };
+
+  const isInWishlist = (productId) => {
+    return wishlist.some(item => item.id === productId);
+  };
+
+  // Toast notifications
+  const addToast = (message, type = 'info') => {
+    const id = Date.now();
+    const newToast = { id, message, type };
+    setToasts(prev => [...prev, newToast]);
+
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 3000);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
+
+  // Cart calculations
+  const getCartTotal = () => {
+    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+  };
+
+  const getShippingCharge = () => {
+    const total = getCartTotal();
+    return total > 1999 ? 0 : 99;
+  };
+
+  const getFinalTotal = () => {
+    return getCartTotal() + getShippingCharge();
+  };
+
+  // Theme toggle
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+  };
+
+  const value = {
+    user,
+    setUser,
+    cart,
+    wishlist,
+    toasts,
+    darkMode,
+    chatOpen,
+    setChatOpen,
+    login,
+    signup,
+    logout,
+    updateUserProfile,
+    deleteAccount,
+    addToCart,
+    removeFromCart,
+    updateCartQuantity,
+    clearCart,
+    addToWishlist,
+    removeFromWishlist,
+    isInWishlist,
+    addToast,
+    removeToast,
+    getCartTotal,
+    getShippingCharge,
+    getFinalTotal,
+    toggleDarkMode,
+  };
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+};
